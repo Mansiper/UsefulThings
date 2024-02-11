@@ -28,7 +28,14 @@ public class ClientCacheService(IJSRuntime jsRuntime, ILogger<ClientCacheService
 
 		var jsonValue = await GetItem(dataKey, expKey);
 		if (!string.IsNullOrWhiteSpace(jsonValue))
-			return JsonSerializer.Deserialize<T>(jsonValue!);
+            try
+            {
+                return JsonSerializer.Deserialize<T>(jsonValue!);
+            }
+            catch
+            {
+                // ignored
+            }
 		
 		var value = await factory();
 
