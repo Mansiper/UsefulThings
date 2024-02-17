@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Microsoft.JSInterop;
 using System.Text;
 
@@ -9,24 +10,24 @@ public class ClientCacheService(IJSRuntime jsRuntime, ILogger<ClientCacheService
 	private const int ChunkSize = 25 * 1024;	//SignalR has restrictions. It works fine with 25 KB per JS invokation
 	private const int DefaultCacheDuration = 100;	//in seconds
 
-    public async Task<T?> GetOrCreate<T>(CacheKey key, Func<Task<T>> factory)
+    public async Task<T?> GetOrCreate<T>(CacheKey key, Func<Task<T>> factory, CancellationToken? ct = null)
 	{
 		var baseKey = GetBaseKey(key);
-		return await GetOrCreateBase(baseKey, factory);
+		return await GetOrCreateBase(baseKey, factory, ct ?? CancellationToken.None);
 	}
 
-	public async Task<T?> GetOrCreate<T>(CacheKey key, string? additionalKey, Func<Task<T>> factory)
+	public async Task<T?> GetOrCreate<T>(CacheKey key, string? additionalKey, Func<Task<T>> factory, CancellationToken? ct = null)
 	{
 		var baseKey = GetBaseKey(key) + additionalKey;
-		return await GetOrCreateBase(baseKey, factory);
+		return await GetOrCreateBase(baseKey, factory, ct ?? CancellationToken.None);
 	}
 
-	private async Task<T?> GetOrCreateBase<T>(string baseKey, Func<Task<T>> factory)
+	private async Task<T?> GetOrCreateBase<T>(string baseKey, Func<Task<T>> factory, CancellationToken ct)
 	{
 		var dataKey = GetDataKey(baseKey);
 		var expKey = GetExpKey(baseKey);
 
-		var jsonValue = await GetItem(dataKey, expKey);
+		var jsonValue = await GetItem(dataKey, expKey, ct);
 		if (!string.IsNullOrWhiteSpace(jsonValue))
             try
             {
@@ -51,67 +52,67 @@ public class ClientCacheService(IJSRuntime jsRuntime, ILogger<ClientCacheService
 				for (var i = 0; i < chunks.Count; i++)
 				{
 					var chunkKey = GetChunkKey(dataKey, i);
-					await jsRuntime.LocalStorageSetItem(chunkKey, chunks[i]);
+					await jsRuntime.LocalStorageSetItem(chunkKey, chunks[i], ct);
 				}
 			}
 			else
-				await jsRuntime.LocalStorageSetItem(dataKey, serialized);
+				await jsRuntime.LocalStorageSetItem(dataKey, serialized, ct);
 		
 			var expirationTime = DateTime.UtcNow.AddSeconds(DefaultCacheDuration);
-			await jsRuntime.LocalStorageSetItem(expKey, expirationTime.ToString("O"));
+			await jsRuntime.LocalStorageSetItem(expKey, expirationTime.ToString("O"), ct);
 		}
 		catch (Exception e)
 		{
 			logger.LogError(e, "Cannot set value to client cache");
-			await Remove(baseKey);
+			await Remove(baseKey, ct);
 		}
 		
 		return value;
 	}
 
-	public async Task Remove(CacheKey key)
+	public async Task Remove(CacheKey key, CancellationToken? ct = null)
 	{
 		var baseKey = GetBaseKey(key);
-		await Remove(baseKey);
+		await Remove(baseKey, ct ?? CancellationToken.None);
 	}
 
-	private async Task Remove(string baseKey)
+	private async Task Remove(string baseKey, CancellationToken ct)
 	{
 		var dataKey = GetDataKey(baseKey);
 		var expKey = GetExpKey(baseKey);
 
-		var keysToDelete = await GetAllKeys()
+		var keysToDelete = await GetAllKeys(ct)
 			.Where(e => e.StartsWith(dataKey) || e.StartsWith(expKey))
-			.ToListAsync();
+			.ToListAsync(ct);
 
 		foreach (var k in keysToDelete)
-			await jsRuntime.LocalStorageRemoveItem(k);
+			await jsRuntime.LocalStorageRemoveItem(k, ct);
 	}
 
-	public async Task Remove(CacheBigKey key)
+	public async Task Remove(CacheBigKey key, CancellationToken? ct = null)
 	{
 		switch (key)
 		{
 			case CacheBigKey.Value1:
-				await Remove(CacheKey.Value11);
-				await Remove(CacheKey.Value12);
+				await Remove(CacheKey.Value11, ct);
+				await Remove(CacheKey.Value12, ct);
 				break;
 			case CacheBigKey.Value2:
-				await Remove(CacheKey.Value21);
-				await Remove(CacheKey.Value22);
+				await Remove(CacheKey.Value21, ct);
+				await Remove(CacheKey.Value22, ct);
 				break;
 			case CacheBigKey.Unknown:
-				await Remove(CacheKey.Unknown);
+				await Remove(CacheKey.Unknown, ct);
 				break;
 		}
 	}
-	private async Task<string?> GetItem(string dataKey, string expKey)
+	private async Task<string?> GetItem(string dataKey, string expKey, CancellationToken ct)
 	{
-		var expValue = await jsRuntime.LocalStorageGetItem(expKey);
+		var expValue = await jsRuntime.LocalStorageGetItem(expKey, ct);
 		if (IsExpired(expValue))
 			return null;
 		
-		var value = await jsRuntime.LocalStorageGetItem(dataKey);
+		var value = await jsRuntime.LocalStorageGetItem(dataKey, ct);
 		if (!string.IsNullOrWhiteSpace(value))
 			return value;
 		
@@ -119,7 +120,7 @@ public class ClientCacheService(IJSRuntime jsRuntime, ILogger<ClientCacheService
 		for (var i = 0; ; i++)
 		{
 			var chunkKey = GetChunkKey(dataKey, i);
-			var chunk = await jsRuntime.LocalStorageGetItem(chunkKey);
+			var chunk = await jsRuntime.LocalStorageGetItem(chunkKey, ct);
 			if (string.IsNullOrWhiteSpace(chunk))
 				break;
 			result.Append(chunk);
@@ -142,12 +143,12 @@ public class ClientCacheService(IJSRuntime jsRuntime, ILogger<ClientCacheService
 		}
 	}
 
-    private async IAsyncEnumerable<string> GetAllKeys()
+    private async IAsyncEnumerable<string> GetAllKeys([EnumeratorCancellation] CancellationToken ct)
     {
-        var length = await jsRuntime.LocalStorageLength();
+        var length = await jsRuntime.LocalStorageLength(ct);
         for (var i = 0; i < length; ++i)
         {
-			var key = await jsRuntime.LocalStorageGetKey(i);
+			var key = await jsRuntime.LocalStorageGetKey(i, ct);
 			if (string.IsNullOrWhiteSpace(key))
 				yield break;
 			yield return key;
