@@ -1,5 +1,4 @@
-﻿using System.Runtime.CompilerServices;
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.JSInterop;
 using System.Text;
 
@@ -52,57 +51,57 @@ public class ClientCacheService(IJSRuntime jsRuntime, ILogger<ClientCacheService
 				for (var i = 0; i < chunks.Count; i++)
 				{
 					var chunkKey = GetChunkKey(dataKey, i);
-					await jsRuntime.LocalStorageSetItem(chunkKey, chunks[i], ct);
+					await jsRuntime.LocalStorageSetItem(chunkKey, chunks[i]);
 				}
 			}
 			else
-				await jsRuntime.LocalStorageSetItem(dataKey, serialized, ct);
+				await jsRuntime.LocalStorageSetItem(dataKey, serialized);
 		
 			var expirationTime = DateTime.UtcNow.AddSeconds(DefaultCacheDuration);
-			await jsRuntime.LocalStorageSetItem(expKey, expirationTime.ToString("O"), ct);
+			await jsRuntime.LocalStorageSetItem(expKey, expirationTime.ToString("O"));
 		}
 		catch (Exception e)
 		{
 			logger.LogError(e, "Cannot set value to client cache");
-			await Remove(baseKey, ct);
+			await Remove(baseKey);
 		}
 		
 		return value;
 	}
 
-	public async Task Remove(CacheKey key, CancellationToken? ct = null)
+	public async Task Remove(CacheKey key)
 	{
 		var baseKey = GetBaseKey(key);
-		await Remove(baseKey, ct ?? CancellationToken.None);
+		await Remove(baseKey);
 	}
 
-	private async Task Remove(string baseKey, CancellationToken ct)
+	private async Task Remove(string baseKey)
 	{
 		var dataKey = GetDataKey(baseKey);
 		var expKey = GetExpKey(baseKey);
 
-		var keysToDelete = await GetAllKeys(ct)
+		var keysToDelete = await GetAllKeys()
 			.Where(e => e.StartsWith(dataKey) || e.StartsWith(expKey))
-			.ToListAsync(ct);
+			.ToListAsync();
 
 		foreach (var k in keysToDelete)
-			await jsRuntime.LocalStorageRemoveItem(k, ct);
+			await jsRuntime.LocalStorageRemoveItem(k);
 	}
 
-	public async Task Remove(CacheBigKey key, CancellationToken? ct = null)
+	public async Task Remove(CacheBigKey key)
 	{
 		switch (key)
 		{
 			case CacheBigKey.Value1:
-				await Remove(CacheKey.Value11, ct);
-				await Remove(CacheKey.Value12, ct);
+				await Remove(CacheKey.Value11);
+				await Remove(CacheKey.Value12);
 				break;
 			case CacheBigKey.Value2:
-				await Remove(CacheKey.Value21, ct);
-				await Remove(CacheKey.Value22, ct);
+				await Remove(CacheKey.Value21);
+				await Remove(CacheKey.Value22);
 				break;
 			case CacheBigKey.Unknown:
-				await Remove(CacheKey.Unknown, ct);
+				await Remove(CacheKey.Unknown);
 				break;
 		}
 	}
@@ -143,12 +142,12 @@ public class ClientCacheService(IJSRuntime jsRuntime, ILogger<ClientCacheService
 		}
 	}
 
-    private async IAsyncEnumerable<string> GetAllKeys([EnumeratorCancellation] CancellationToken ct)
+    private async IAsyncEnumerable<string> GetAllKeys()
     {
-        var length = await jsRuntime.LocalStorageLength(ct);
+        var length = await jsRuntime.LocalStorageLength();
         for (var i = 0; i < length; ++i)
         {
-			var key = await jsRuntime.LocalStorageGetKey(i, ct);
+			var key = await jsRuntime.LocalStorageGetKey(i);
 			if (string.IsNullOrWhiteSpace(key))
 				yield break;
 			yield return key;

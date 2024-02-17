@@ -14,15 +14,15 @@ public static class JsRuntimeExtensions
     public static async Task<string> LocalStorageGetItem(this IJSRuntime jsRuntime, string key, CancellationToken ct) =>
         await jsRuntime.InvokeAsync<string>(GetItemMethod, ct, key);
 
-    public static async Task LocalStorageSetItem(this IJSRuntime jsRuntime, string key, string value, CancellationToken ct) =>
-        await jsRuntime.InvokeVoidAsync(SetItemMethod, ct, key, value);
+    public static async Task LocalStorageSetItem(this IJSRuntime jsRuntime, string key, string value) =>
+        await jsRuntime.InvokeVoidAsync(SetItemMethod, key, value);
 
-    public static async Task LocalStorageRemoveItem(this IJSRuntime jsRuntime, string key, CancellationToken ct) =>
-        await jsRuntime.InvokeVoidAsync(RemoveItemMethod, ct, key);
+    public static async Task LocalStorageRemoveItem(this IJSRuntime jsRuntime, string key) =>
+        await jsRuntime.InvokeVoidAsync(RemoveItemMethod, key);
 
-    public static async Task<int> LocalStorageLength(this IJSRuntime jsRuntime, CancellationToken ct) =>
-        await jsRuntime.InvokeAsync<int>("eval", ct, LengthMethod);
+    public static async Task<int> LocalStorageLength(this IJSRuntime jsRuntime) =>
+        await jsRuntime.InvokeAsync<int>("eval", LengthMethod);
 
-    public static async Task<string> LocalStorageGetKey(this IJSRuntime jsRuntime, int index, CancellationToken ct) =>
-        await jsRuntime.InvokeAsync<string>(KeyMethod, ct, index);
+    public static async Task<string> LocalStorageGetKey(this IJSRuntime jsRuntime, int index) =>
+        await jsRuntime.InvokeAsync<string>(KeyMethod, index);
 }
