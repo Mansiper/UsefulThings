@@ -7,21 +7,31 @@ namespace LocalStorageCache;
 public class ClientCacheService(IJSRuntime jsRuntime, ILogger<ClientCacheService> logger) : IClientCacheService
 {
 	private const int ChunkSize = 25 * 1024;	//SignalR has restrictions. It works fine with 25 KB per JS invokation
-	private const int DefaultCacheDuration = 100;	//in seconds
-
-    public async Task<T?> GetOrCreate<T>(CacheKey key, Func<Task<T>> factory, CancellationToken? ct = null)
+	
+    public async Task<T?> GetOrCreate<T>(CacheKey key, Func<Task<T>> factory,
+		CancellationToken? ct = null) where T : class
 	{
-		var baseKey = GetBaseKey(key);
-		return await GetOrCreateBase(baseKey, factory, ct ?? CancellationToken.None);
+		var (baseKey, expTime) = GetBaseKey(key);
+		return await GetOrCreateBase(baseKey, expTime, factory, ct ?? CancellationToken.None);
 	}
 
-	public async Task<T?> GetOrCreate<T>(CacheKey key, string? additionalKey, Func<Task<T>> factory, CancellationToken? ct = null)
+	public async Task<T?> GetOrCreate<T>(CacheKey key, string? additionalKey, Func<Task<T>> factory,
+		CancellationToken? ct = null) where T : class
 	{
-		var baseKey = GetBaseKey(key) + additionalKey;
-		return await GetOrCreateBase(baseKey, factory, ct ?? CancellationToken.None);
+		var (baseKey, expTime) = GetBaseData(key);
+		baseKey += additional?.ToLower();
+		return await GetOrCreateBase(baseKey, expTime, factory, ct ?? CancellationToken.None);
 	}
 
-	private async Task<T?> GetOrCreateBase<T>(string baseKey, Func<Task<T>> factory, CancellationToken ct)
+	public async Task<T?> GetOrCreate<T>(CacheKey key, string[] additionalKeys, Func<Task<T>> factory,
+		CancellationToken? ct = null) where T : class
+	{
+		var (baseKey, expTime) = GetBaseData(key);
+		baseKey += string.Join("-", additionalKeys).ToLower();
+		return await GetOrCreateBase(baseKey, expTime, factory, ct ?? CancellationToken.None);
+	}
+
+	private async Task<T?> GetOrCreateBase<T>(string baseKey, int expTime, Func<Task<T>> factory, CancellationToken ct)
 	{
 		var dataKey = GetDataKey(baseKey);
 		var expKey = GetExpKey(baseKey);
@@ -39,9 +49,8 @@ public class ClientCacheService(IJSRuntime jsRuntime, ILogger<ClientCacheService
 		
 		var value = await factory();
 
-		//here you can add some conditions for adding to cache
+		//if (!AllowAddToCache(value)) return value;
 
-		var serialized = JsonSerializer.Serialize(value);
 		try
 		{
 			var serialized = JsonSerializer.Serialize(value);
@@ -57,7 +66,7 @@ public class ClientCacheService(IJSRuntime jsRuntime, ILogger<ClientCacheService
 			else
 				await jsRuntime.LocalStorageSetItem(dataKey, serialized);
 		
-			var expirationTime = DateTime.UtcNow.AddSeconds(DefaultCacheDuration);
+			var expirationTime = DateTime.UtcNow.AddSeconds(expTime);
 			await jsRuntime.LocalStorageSetItem(expKey, expirationTime.ToString("O"));
 		}
 		catch (Exception e)
@@ -71,7 +80,7 @@ public class ClientCacheService(IJSRuntime jsRuntime, ILogger<ClientCacheService
 
 	public async Task Remove(CacheKey key)
 	{
-		var baseKey = GetBaseKey(key);
+		var (baseKey, _) = GetBaseData(key);
 		await Remove(baseKey);
 	}
 
@@ -154,16 +163,16 @@ public class ClientCacheService(IJSRuntime jsRuntime, ILogger<ClientCacheService
 		}
     }
 
-    private static string GetBaseKey(CacheKey key) =>
+    private static (string key, int seconds) GetBaseKey(CacheKey key) =>
 		key switch
 		{
-			CacheKey.Value11 => "value_11-",	//- is for additional values after
-			CacheKey.Value12 => "value_12",		//_ is for using in names
+			CacheKey.Value11 => ("value_11-", 30),	// is for additional values after
+			CacheKey.Value12 => ("value_12", 30),	//_ is for using in names
 
-			CacheKey.Value21 => "value_list",
-			CacheKey.Value22 => "value_one-",	//add Id in an additional key
+			CacheKey.Value21 => ("value_list", 60),
+			CacheKey.Value22 => ("value_one-", 100),	//add Id in an additional key
 
-			_ => "unknown-",
+			_ => ("unknown-", 60),
 		};
 
 	private static string GetDataKey(string baseKey) =>
