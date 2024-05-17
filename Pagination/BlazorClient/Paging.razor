@@ -1,0 +1,162 @@
+﻿@typeparam T where T: class
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<nav class="pagination justify-content-center">
+	<ul class="pagination">
+		@if (ShowGoLeft)
+		{
+			<li class="page-item">
+				<a @onclick="OnLeft" @onclick:preventDefault class="page-link" title="previous one">
+					<span aria-hidden="true">&lt;</span>
+				</a>
+			</li>
+		}
+		@if (ShowGoLeftBig)
+		{
+			<li class="page-item">
+				<a @onclick="OnFarLeft" @onclick:preventDefault class="page-link" title="previous @BigStep">
+					<span aria-hidden="true">&laquo;</span>
+				</a>
+			</li>
+		}
+		@if (ShowGoFirst)
+		{
+			<li class="page-item">
+				<a @onclick="OnFirst" @onclick:preventDefault class="page-link" title="first">⋘</a>
+			</li>
+		}
+		@if (data.Page - Neighbours > 1)
+		{
+			<li class="page-item disabled">
+				<a class="page-link" tabindex="-1">...</a>
+			</li>
+		}
+		@for (var i = data.Page - Neighbours; i <= data.Page + Neighbours; i++)
+		{
+			var index = i;
+			if (i < 1 || i > data.PagesCount)
+			{
+				continue;
+			}
+
+			<li class="page-item">
+				<a @onclick="() => GetData(index)" @onclick:preventDefault class="page-link @(data.Page == index ? "active" : "")">@index</a>
+			</li>
+		}
+		@if (ShowManyRight)
+		{
+			<li class="page-item disabled">
+				<a class="page-link" tabindex="-1">...</a>
+			</li>
+		}
+		@if (ShowGoLast)
+		{
+			<li class="page-item">
+				<a @onclick="OnLast" @onclick:preventDefault class="page-link" title="last">⋙</a>
+			</li>
+		}
+		@if (ShowGoRightBig)
+		{
+			<li class="page-item">
+				<a @onclick="OnFarRight" @onclick:preventDefault class="page-link" title="next @BigStep">
+					<span aria-hidden="true">&raquo;</span>
+				</a>
+			</li>
+		}
+		@if (ShowGoRight)
+		{
+			<li class="page-item">
+				<a @onclick="OnRight" @onclick:preventDefault class="page-link" title="next one">
+					<span aria-hidden="true">&gt;</span>
+				</a>
+			</li>
+		}
+	</ul>
+</nav>
+
+@code {
+	[Parameter]
+	public string Link { get; set; } = null!;
+	[Parameter]
+	public bool? Anonymous { get; set; } = false;
+	[Parameter]
+	public string? Path { get; set; }
+
+#pragma warning disable BL0007
+	[Parameter]
+	public Paginged<T> Data
+	{
+		get => data;
+		set
+		{
+			if (data == value) return;
+
+			data = value;
+			DataChanged.InvokeAsync(value);
+		}
+	}
+	[Parameter]
+	public EventCallback<Paginged<T>> DataChanged { get; set; }
+	private Paginged<T> data = null!;
+#pragma warning restore BL0007
+
+	private const int BigStep = 10;
+	private const int Neighbours = 2;
+	private const int ManyPages = 100;
+
+	private bool ShowGoLeft => data.Page > 1;
+	private bool ShowGoLeftBig => data.PagesCount > BigStep && data.Page > BigStep;
+	private bool ShowGoFirst => data.PagesCount > ManyPages && ShowManyLeft;
+	private bool ShowManyLeft => data.Page - Neighbours > 1;
+	private bool ShowManyRight => data.Page + Neighbours < data.PagesCount;
+	private bool ShowGoLast => data.PagesCount > ManyPages && ShowManyRight;
+	private bool ShowGoRightBig => data.PagesCount > BigStep && data.Page < data.PagesCount - BigStep;
+	private bool ShowGoRight => data.Page < data.PagesCount;
+	
+	private async Task OnFirst() =>
+		await GetData(1);
+
+	private async Task OnLeft()
+	{
+		var page = data.Page - 1;
+		if (page > 0)
+			await GetData(page);
+	}
+
+	private async Task OnFarLeft()
+	{
+		var page = data.Page - 10;
+		if (page > 0)
+			await GetData(page);
+	}
+
+	private async Task OnRight()
+	{
+		var page = data.Page + 1;
+		if (page <= data.PagesCount)
+			await GetData(page);
+	}
+
+	private async Task OnFarRight()
+	{
+		var page = data.Page + 10;
+		if (page <= data.PagesCount)
+			await GetData(page);		
+	}
+
+	private async Task OnLast() =>
+		await GetData(data.PagesCount);
+
+	private async Task OnGotoPage(string page) =>
+		await GetData(int.Parse(page));
+
+	private async Task GetData(int page)
+    {
+        Data = await Http.GetFromJsonAsync<Paginged<T>>(Navigation.PaginationUri(Link, page, data.Size))
+               ?? new() { Data = [] };
+		if (Path is not null)
+		    Navigation.NavigateTo(Path+$"?page={page}&size={data.Size}");
+    }
+
+}

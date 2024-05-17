@@ -1,0 +1,44 @@
+﻿@page "/cities"
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+@if (data != null)
+{
+	<table>
+		<tbody>
+		@foreach (var row in data.Data)
+		{
+			<tr><td>@row.Name</td></tr>
+		}
+		</tbody>
+	</table>
+	if (data.PagesCount > 1)
+	{
+        <Paging T="CityDto" Link="@("api/city")" @bind-Data="data" Path="cities" />
+	}
+}
+
+@code {
+	[Parameter]
+	[SupplyParameterFromQuery(Name = "page")]
+	public int? Page { get; set; }
+	[Parameter]
+	[SupplyParameterFromQuery(Name = "size")]
+	public int? Size { get; set; }
+
+	private Paginged<CityDto>? data;
+
+	protected override async Task OnInitializedAsync()
+	{
+		try
+		{
+			var uri = Navigation.PaginationUri(
+				"api/City", Page ?? PaginationQuery.DefaultPage, Size ?? PaginationQuery.DefaultSize);
+			data = await Http.GetFromJsonAsync<Paginged<CityDto>>(uri);
+		}
+		catch (Exception exception)
+		{
+			// show error
+		}
+	}
+}
